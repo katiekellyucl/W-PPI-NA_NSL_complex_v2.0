@@ -1,0 +1,288 @@
+Project number: 1 - revision
+
+Author: "Katie Kelly"
+
+Contact details: katie.kelly.14@ucl.ac.uk
+
+date: "2023-01-26"
+
+Date script last modified: 2023-02-03   
+
+Package dependencies: 
+library("dplyr")
+library("tidyverse")
+library("stringr")
+
+output: pdf_document
+
+
+#Running of the code for the SL interactome -----------------------------------------------------------------------------
+#generating the merge files according to 'method' observation------------------------------------------------------------
+#PINOT------------------------------------------------------------
+#upload the PINOT file containing the SL interactions within the NSL complex
+
+PINOT_rawdata <- read.csv('data/rawdata/PINOT_SL.csv')
+PINOT_rawdata<- PINOT_rawdata[c(1)]
+PINOT_rawdata<- unique(PINOT_rawdata)
+#The following code replaces the names of the methods with those listed in the methods conversion file from PINOT (supplementary files)
+rep_str = c('CoIP'='Co-immunoprecipitation','PAGE'='Comigration/SDSpage','Wblot'='Western-Blot','Genetic'='Genetic_inference','LUM'='Co-immunoprecipitation','Xray'='X-ray_cristallography','APMS'='Affinity_Purification_&_Mass_Spectrometry','2Hyb'='Two_Hybrid','CoSed'='Cosedimentation','Imaging'='Imaging_Technique','Proximity'='Proximity_Ligation_Assay','Xlink'='Cross-linking','Array'='Arrays','Fluorescence'='Fluorescence_Technology', 'Complementation'='Reconstruction', 'Chromatography'='Molecular_Sieving','CHIP'='Chromatin_IP','SPR'='Surface_Plasmon_Resonance','Thermal'='Calorimetry','Display'='Display_technology','NMR'='Nuclear_Magnetic_Resonance', 'FB'='in_silico' )
+PINOT_rawdata$Method <- str_replace_all(PINOT_rawdata$Method, rep_str)
+
+#The following line of code creates a new column for each of the methods used to detect the interaction, and splits the dataframe according to ';', such that each new method is assigned a new column.
+
+PINOT_rawdata_methodsplit <- PINOT_rawdata %>%
+separate(Method, c("Method1", "Method2","Method3","Method4","Method5","Method6","Method7","Method8","Method9","Method10","Method11","Method12","Method13","Method14","Method15","Method16","Method17"), ";")
+
+#The following piece of code generates a new row for every separate method, for each interaction.This file is then ready for the conversion of method name > methodID using the conversion file.
+ PINOT_rawdata_methodsplit_rows <- PINOT_rawdata_methodsplit %>% 
+  pivot_longer(c(`Method1`, `Method2`,`Method3`,`Method4`, `Method5`,`Method6`, `Method7`,`Method8`,`Method9`,`Method10`,`Method11`,`Method12`,`Method13`,`Method14`,`Method15`,`Method16`,`Method17`), names_to = "Method_Num", values_to = "Method_name") %>% na.omit( PINOT_rawdata_methodsplit_rows) 
+
+write.csv(PINOT_rawdata_methodsplit_rows,"data/processed_data/PINOT_SL_methodsplit.csv", row.names = FALSE)
+
+
+#HIPPIE------------------------------------------------------------
+#The following code is for parsing the HIPPIE file. The Methods have been separated into new columns in Excel for ease. Any data lacking either method or PubMedID has also been removed in Excel first. Then, the entries with multiple entrez IDs have been reviewed manually and assigned a single entrez ID. This code will generate a new row for each of the interaction detection events (new row per method).
+HIPPIE_rawdata_methodsplit_columns <- read.csv('data/rawdata/HIPPIE_SL.csv', header=TRUE) #calls in interaction data for the 16 mitochondrial proteins extracted from the first layer.
+
+HIPPIE_rawdata_methodsplit_columns <-HIPPIE_rawdata_methodsplit_columns[-c(1,3,5,6)] #Leaves Entrez ID, and detection method (1 per column) 
+
+names(HIPPIE_rawdata_methodsplit_columns)[1] <- "A"
+names(HIPPIE_rawdata_methodsplit_columns)[2] <- "B"
+names(HIPPIE_rawdata_methodsplit_columns)[3] <- "method"
+
+B <- HIPPIE_rawdata_methodsplit_columns
+
+n.col.meths <- ncol(B)
+i <- 4
+parsed <- B[, c(1:3)]
+
+for (i in 4:n.col.meths) {
+  add <- B[,c(1:2,i)]
+  names(add)[3] <- "method"
+  parsed <- rbind(parsed,add)
+  i <- i+1
+}
+
+parsed <- parsed %>% na.omit(parsed ) 
+parsed <-unique(parsed)
+
+write.csv(parsed, "data/processed_data/HIPPIE_SL_methodsplit.csv",row.names=FALSE)
+
+#All entries in the HIPPIE file have an associated PubMed ID.
+
+#MIST------------------------------------------------------------
+#The following code is for parsing the MIST file. The Methods have been separated into new rows in Excel for ease. Entries without a PubMed ID or Method have also been removed already. This code will fill in the missing data in empty cells. Note that all empty cells have been filled with '0' in order to call the dataframe into Rstudio. The Method ID has also been isolated from the method name for downstream data processing.
+
+
+B <-  read.csv('data/rawdata/MIST_SL.csv', header=TRUE)
+end <- nrow(B)
+i<-1
+
+for (i in 1:end) {
+  FLAG <- B[i,1]
+  # if you have 0 in the name = replace with the line above. DO NOT REPLACE METHODS
+  if (FLAG ==0) {
+  B[i,1] <- B[(i-1),1]
+  B[i,2] <- B[(i-1),2]
+  B[i,3] <- B[(i-1),3]
+  B[i,4] <- B[(i-1),4]
+  # NO it is PUBMED and you have different values B[i,5] <- B[(i-1),5]
+  B[i,6] <- B[(i-1),6]
+  B[i,7] <- B[(i-1),7]
+  }
+ 
+  i <- i+1
+}
+B <-B[, c(1,2,3,4,8)] 
+
+B <-unique(B)
+  
+write.csv(B, "data/processed_data/MIST_SL_methodsplit.csv",row.names=FALSE)
+#The saved MIST file contains : entries that have at least one PubMedID & Method. 
+
+#Method QC and annotation standardisation (MIST, HIPPIE)------------------------------------------------------------
+#Now, we need to call back in the method conversion file, in order to convert all of the methodological annotations to the named method used for PINOT. This is because the MI are redundant, which means that many MI have been encapsulated under the same MI. This means that the PINOT data can be merged with the MIST and HIPPIE data. 
+
+#call in the method conversion file
+Method_conversion_file <-  read.csv('data/conversion_files/PINOT_method_conversion.csv', header=TRUE)
+Method_conversion_file <- Method_conversion_file[c(5,7)]
+names(Method_conversion_file)[1] <- "Name"
+names(Method_conversion_file)[2] <- "Method"
+Method_conversion_file <-unique(Method_conversion_file) #183 unique methods
+#Import the processed MIST file, merge with the method conversion file to remove 'unspecified' methods
+
+MIST_prepare_merge <-  read.csv('data/processed_data/MIST_SL_methodsplit.csv', header=TRUE)
+names(MIST_prepare_merge)[1] <- "A"
+names(MIST_prepare_merge)[2] <- "NAMEA"
+names(MIST_prepare_merge)[3] <- "B"
+names(MIST_prepare_merge)[4] <- "NAMEB"
+names(MIST_prepare_merge)[5] <- "Method"
+MIST_prepare_merge <-merge(MIST_prepare_merge, Method_conversion_file, by.x="Method", by.y="Method", all.x=TRUE)
+write.csv(MIST_prepare_merge, "data/processed_data/MIST_SL_prepare_merge.csv",row.names=FALSE)
+
+#To the above file, the unannotated methods have been annotated manually, since they are not contained within the PINOT method conversion file. Any methods annotated as 'Unspecified' have been excluded manually prior to the next step.
+MIST_prepare_merge <-  read.csv('data/processed_data/MIST_SL_prepare_merge_annotated.csv', header=TRUE)
+MIST_merge_file  <-MIST_prepare_merge[c(2,4,6)] #we want to keep the column containing the method name, since this is consistent with PINOT.
+write.csv(MIST_merge_file, "data/processed_data/MIST_SL_merge_file.csv",row.names=FALSE)
+
+
+#Import the processed HIPPIE file, merge with the method conversion file to remove all 'general' or 'unspecified' methods. Note that since parsingin R, rows with '0' in 'Method' column have been removed, and those entires with multi-ID have been rectified according to the PINOT conversion table. Those that could not be attributed a univocal entrez ID have been removed. 
+
+HIPPIE_prepare_merge <-  read.csv('data/processed_data/HIPPIE_SL_methodsplit.csv', header=TRUE)
+HIPPIE_prepare_merge <-merge(HIPPIE_prepare_merge, Method_conversion_file, by.x="method", by.y="Method",all.x=TRUE)
+write.csv(HIPPIE_prepare_merge, "data/processed_data/HIPPIE_SL_prepare_merge.csv",row.names=FALSE)
+
+#To the above file, methods have been annotated manually, since they were not contained within the PINOT method conversion file. Any methods annotated as 'Unspecified' have been excluded manually prior to the next step.
+HIPPIE_prepare_merge <-  read.csv('data/processed_data/HIPPIE_SL_prepare_merge_annotated_check.csv', header=TRUE)
+HIPPIE_merge_file  <-HIPPIE_prepare_merge[c(2,3,4)]
+write.csv(HIPPIE_merge_file, "data/processed_data/HIPPIE_SL_merge_file_check.csv",row.names=FALSE)
+
+
+#Preparing the PINOT merge file--------------------------------------------------------
+
+PINOT_prepare_merge <-  read.csv('data/processed_data/PINOT_SL_methodsplit.csv', header=TRUE)
+PINOT_prepare_merge <- PINOT_prepare_merge[c(3,6,12)]
+names(PINOT_prepare_merge)[1] <- "A"
+names(PINOT_prepare_merge)[2] <- "B"
+names(PINOT_prepare_merge)[3] <- "Name"
+write.csv(PINOT_prepare_merge, "data/processed_data/PINOT_SL_merge_file.csv",row.names=FALSE)
+#The resultant file has all of the PINOT reported interations, with the associated method name and correctly named columns.
+
+#merging the methodological observations between databases--------------------------------------------------------
+#now we want to call in all three files, ensure that the column names are standardised, and then merge the dataframes, according to column names (on top of one another).
+HIPPIE_merge_file <-  read.csv('data/processed_data/HIPPIE_SL_merge_file.csv', header=TRUE)
+PINOT_merge_file <-  read.csv('data/processed_data/PINOT_SL_merge_file.csv', header=TRUE)
+MIST_merge_file <-  read.csv('data/processed_data/MIST_SL_merge_file.csv', header=TRUE)
+
+P_H_M_mergefile<- bind_rows(HIPPIE_merge_file, PINOT_merge_file,MIST_merge_file)
+
+P_H_M_mergefile <- P_H_M_mergefile[!duplicated(P_H_M_mergefile), ] #10894 observations 
+write.csv(P_H_M_mergefile, "data/processed_data/P_H_M_method_mergefile_SL_check.csv",row.names=FALSE)
+
+#generating the merge files according to 'PubMedID' observation------------------------------------------------------------
+#The next set of code is for generating the lists of interactions, with a new row corresponding to a new PubMed ID. 
+#PINOT------------------------------------------------------------
+PINOT_rawdata_PubmedID <- read.csv('data/rawdata/PINOT_SLPubMedID_separatecolumn.csv')
+
+PINOT_rawdata_PubmedID <- PINOT_rawdata_PubmedID[-c(1,2,4,5,7,8,9)]
+names(PINOT_rawdata_PubmedID)[1] <- "A"
+names(PINOT_rawdata_PubmedID)[2] <- "B"
+names(PINOT_rawdata_PubmedID)[3] <- "PubMedID"
+
+B <- PINOT_rawdata_PubmedID
+
+n.col.pub <- ncol(B)
+i <- 4
+parsed <- B[, c(1:3)]
+
+for (i in 4:n.col.pub) {
+  add <- B[,c(1:2,i)]
+  names(add)[3] <- "PubMedID"
+  parsed <- rbind(parsed,add)
+  i <- i+1
+}
+parsed <- na.omit(parsed) 
+
+write.csv(parsed, "data/processed_data/PINOT_SL_PubMedID.csv",row.names=FALSE)
+
+
+#HIPPIE------------------------------------------------------------
+
+HIPPIE_rawdata_PubmedID <- read.csv('data/rawdata/HIPPIE_SL_PubMedID_separatecolumn.csv')
+
+
+HIPPIE_rawdata_PubmedID  <- HIPPIE_rawdata_PubmedID [-c(1,3)]
+
+names(HIPPIE_rawdata_PubmedID)[1] <- "A"
+names(HIPPIE_rawdata_PubmedID)[2] <- "B"
+names(HIPPIE_rawdata_PubmedID)[3] <- "PubMedID"
+
+B <- HIPPIE_rawdata_PubmedID
+
+n.col.meths <- ncol(B)
+i <- 4
+parsed <- B[, c(1:3)]
+
+for (i in 4:n.col.meths) {
+  add <- B[,c(1:2,i)]
+  names(add)[3] <- "PubMedID"
+  parsed <- rbind(parsed,add)
+  i <- i+1
+}
+parsed <- na.omit(parsed) 
+
+write.csv(parsed, "data/processed_data/HIPPIE_SL_PubMedID.csv",row.names=FALSE)
+
+#MIST------------------------------------------------------------
+#The following lines of code call in a dataframe (MIST) that contains the first layer interactome. The methods columns have been removed, and the dataframe has been organised such that all empty rows according to missing entries within the PubMedID column have been removed. Now we need to run the code once again that assigns the Name A and Name B to the row containing the PubMedID. Since each PubMedID already has its own row, this does not generate any rows in which there is the interactor A and B, without a PubMedID. 
+
+B <-  read.csv('data/rawdata/MIST_SL_PubMedID_sglrow.csv', header=TRUE)
+
+names(B)[1] <- "A"
+names(B)[3] <- "B"
+names(B)[5] <- "PubMedID"
+B <-B[c(1,3,5)]
+end <- nrow(B)
+i<-1
+
+for (i in 1:end) {
+  FLAG <- B[i,1]
+  if (FLAG == 0) {
+  B[i,1] <- B[(i-1),1]
+  B[i,2] <- B[(i-1),2]
+  }
+ 
+  i <- i+1
+}
+
+write.csv(B, "data/processed_data/MIST_SL_PubMedID.csv",row.names=FALSE)
+
+
+#PubMed merge file preparation------------------------------------------------------------
+#now we want to call in all three (PubMedID) files, ensure that the column names are standardised, and then merge the dataframes, according to column names (on top of one another).
+
+#The  HIPPIE files have been opened in Excel, The 'PubMed:' prefix has  been removed from all IDs in each row, so that the dataframes can be merged together. The new file is saved within the processed_data file with the suffix '_02'.
+
+
+HIPPIE_merge_file <-  read.csv('data/processed_data/HIPPIE_SL_PubMedID_02.csv', header=TRUE) 
+PINOT_merge_file <-  read.csv('data/processed_data/PINOT_SL_PubMedID.csv', header=TRUE)
+MIST_merge_file <-  read.csv('data/processed_data/MIST_SL_PubMedID.csv', header=TRUE)
+
+
+P_H_M_mergefile_PubMedID<- rbind(HIPPIE_merge_file, PINOT_merge_file,MIST_merge_file) 
+P_H_M_mergefile_PubMedID<- P_H_M_mergefile_PubMedID[!duplicated(P_H_M_mergefile_PubMedID), ] 
+
+
+write.csv(P_H_M_mergefile_PubMedID, "data/processed_data/P_H_M_PubMedID_mergefile_SL.csv",row.names=FALSE)
+
+#So now we have a dataframe with each unique observation of each interaction according to PubMedID, and a dataframe with each unique observation of each interaction according to Method. Now to remove the column with the identifier (PubMed ID or Method) and merge the two dataframes according to column. Then a count can be performed to find out how many times each of the rows appears in duplicate in the dataframe. 
+P_H_M_mergefile_PubMedID <-  read.csv('data/processed_data/P_H_M_PubMedID_mergefile_SL.csv', header=TRUE)
+P_H_M_mergefile_Method <-  read.csv('data/processed_data/P_H_M_method_mergefile_SL_check.csv', header=TRUE)
+
+P_H_M_mergefile_PubMedID <- P_H_M_mergefile_PubMedID[c(1,2)]
+P_H_M_mergefile_Method <- P_H_M_mergefile_Method[c(1,2)]
+
+P_H_M_mergefile_PubMed_Method<- rbind(P_H_M_mergefile_PubMedID,P_H_M_mergefile_Method)
+write.csv(P_H_M_mergefile_PubMed_Method, "data/processed_data/P_H_M_mergefile_PubMed_Method_SL_check.csv",row.names=FALSE)
+
+#The following code adds a column 'n' with the number of times that each row is replicated within the dataframe.
+P_H_M_mergefile_PubMed_Method<- P_H_M_mergefile_PubMed_Method %>%
+  group_by(across(everything())) %>%
+  mutate(n = n())
+  
+P_H_M_mergefile_PubMed_Method<- P_H_M_mergefile_PubMed_Method[!duplicated(P_H_M_mergefile_PubMed_Method), ] #The number of unique interactions
+write.csv(P_H_M_mergefile_PubMed_Method, "data/processed_data/P_H_M_mergefile_PubMed_Method_numofobservations_SL_check.csv",row.names=FALSE)
+#Now we can apply the threshold to 'n' column, to retain only those rows with a value >2.
+
+P_H_M_mergefile_PubMed_Method_threshold_above2<- subset(P_H_M_mergefile_PubMed_Method, n > 2) #The number of unique interactions above the CS threshold
+P_H_M_mergefile_PubMed_Method_threshold_above2<-  subset(P_H_M_mergefile_PubMed_Method_threshold_above2, !B == '7316') #Exclusion of 'UBC' 
+
+write.csv(P_H_M_mergefile_PubMed_Method_threshold_above2,"data/processed_data/Second_Layer_interactions_threshholded.csv",row.names=FALSE)
+
+SL_thresholded_unique_interactors<- P_H_M_mergefile_PubMed_Method_threshold_above2[c(2)] #Selects only the list of interactors
+SL_thresholded_unique_interactors<- unique(SL_thresholded_unique_interactors) 
+names(SL_thresholded_unique_interactors)[1] <- "Analysis_2"
+write.csv(SL_thresholded_unique_interactors, "data/processed_data/SL_Analysis_2_interactors>2.csv",row.names=FALSE)
+
+#N.B: We do not apply the multi-interactome threshold. We now look only at the individual interactomes.
+

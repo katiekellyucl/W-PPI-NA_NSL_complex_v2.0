@@ -1,0 +1,32 @@
+Project number: 1 - revision
+
+Author: "Katie Kelly"
+
+Contact details: katie.kelly.14@ucl.ac.uk
+
+date: "2023-01-26"
+
+Date script last modified: 2023-02-03   
+
+Package dependencies: 
+library("dplyr")
+library("tidyverse")
+library("stringr")
+
+output: pdf_document
+
+#Note: A file must be created, called 'Mito_CORE_network', which contains all of the unique interactors within the first and second layer of the Mito-CORE network .
+
+
+#merging with the PD gene list (mendelian and associated)
+PD_gene <- read.csv('data/conversion_files/PD_gene_list.csv', header=TRUE)
+PD_mitocore_Analysis_2<-merge(Mito_CORE_network,PD_gene, by.x="gene.name", by.y="Gene.Symbol", all.x=TRUE)#Merges the first and second layer of the Mito_CORE network with the PD gene list.
+PD_mitocore_Analysis_2 <- PD_mitocore_Analysis_2 %>% na.omit(PD_mitocore_Analysis_2) 
+
+write.csv(PD_mitocore_Analysis_2, "data/processed_data/PDgenes_MitoCORE_Analysis_2.csv",row.names=FALSE)
+
+#identifying the Mendelian PD proteins in the SL
+PD_Mendelian<- read.csv('data/conversion_files/PD_Mendelian.csv', header=TRUE)
+PD_mendelian_mitocore_Analysis_2<-merge(Mito_CORE_network,PD_Mendelian, by.x="gene.name", by.y="PD_seeds", all.x=TRUE) %>% na.omit(PD_mendelian_SL_Analysis_2) 
+
+write.csv(PD_mendelian_mitocore_Analysis_2,"data/processed_data/MendelianPDgenes_mitocore_Analysis_2.csv",row.names=FALSE)

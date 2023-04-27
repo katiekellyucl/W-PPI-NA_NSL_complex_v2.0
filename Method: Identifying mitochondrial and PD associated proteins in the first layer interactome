@@ -1,0 +1,48 @@
+Project number: 1 - revision
+
+Author: "Katie Kelly"
+
+Contact details: katie.kelly.14@ucl.ac.uk
+
+date: "2023-01-26"
+
+Date script last modified: 2023-02-03   
+
+Package dependencies: 
+library("dplyr")
+library("tidyverse")
+library("stringr")
+
+output: pdf_document
+
+#identifying the PD and mito proteins in the FL derived via this approach
+PD_gene <- read.csv('data/conversion_files/PD_gene_list.csv', header=TRUE)
+mito_gene <- read.csv('data/conversion_files/Unique_Mitochondrial_list.csv', header=TRUE)
+names_table<-  read.csv('data/conversion_files/conversion_table.csv', header=TRUE) #we need to add the gene names to the mito table, to make sure that we can see which of the mitochondrial genes are present in the list and which are not.
+
+mito_gene<-merge(mito_gene,names_table ,by.x="entrez", by.y="entrez", all.x=TRUE)
+mito_gene<-mito_gene[c(1,2,4)]
+
+FL_thresholded_unique_interactors <- read.csv('data/processed_data/Analysis_2_interactors_2_post_review.csv')
+#Adding the gene names.
+FL_thresholded_unique_interactors<-merge(FL_thresholded_unique_interactors,names_table ,by.x="Analysis_2", by.y="entrez", all.x=TRUE)
+FL_thresholded_unique_interactors<-FL_thresholded_unique_interactors[c(1,4)]
+
+
+PD_FL_Analysis_2<-merge(FL_thresholded_unique_interactors,PD_gene, by.x="Analysis_2", by.y="entrez", all.x=TRUE)
+PD_FL_Analysis_2 <- PD_FL_Analysis_2 %>% na.omit(PD_FL_Analysis_2) 
+
+mito_FL_Analysis_2<-merge(FL_thresholded_unique_interactors,mito_gene, by.x="Analysis_2", by.y="entrez", all.x=TRUE)
+mito_FL_Analysis_2 <- mito_FL_Analysis_2 %>% na.omit(mito_FL_Analysis_2) 
+
+write.csv(PD_FL_Analysis_2, "data/processed_data/PDgenes_FL_Analysis_2.csv",row.names=FALSE)
+write.csv(mito_FL_Analysis_2, "data/processed_data/mitogenes_FL_Analysis_2.csv",row.names=FALSE)
+
+#identifying the Mendelian PD proteins in the SL
+PD_Mendelian<- read.csv('data/conversion_files/PD_Mendelian.csv', header=TRUE)
+names_table<-  read.csv('data/conversion_files/conversion_table.csv', header=TRUE)
+PD_Mendelian<-merge(PD_Mendelian,names_table ,by.x="PD_seeds", by.y="gene.name", all.x=TRUE)
+PD_Mendelian <- PD_Mendelian[c(1,2,3)]
+PD_mendelian_FL_Analysis_2<-merge(FL_thresholded_unique_interactors,PD_Mendelian, by.x="Analysis_2", by.y="entrez", all.x=TRUE) %>% na.omit(PD_mendelian_SL_Analysis_2) 
+
+write.csv(PD_mendelian_FL_Analysis_2, "data/processed_data/MendelianPDgenes_FL_Analysis_2.csv",row.names=FALSE)

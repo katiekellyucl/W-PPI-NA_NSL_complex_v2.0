@@ -1,0 +1,87 @@
+Project number: 1 - revision
+
+Author: "Katie Kelly"
+
+Contact details: katie.kelly.14@ucl.ac.uk
+
+date: "2023-01-26"
+
+Date script last modified: 2023-02-03   
+
+Package dependencies: 
+library("dplyr")
+library("tidyverse")
+library("stringr")
+
+output: pdf_document
+
+
+
+#First, in excel, use the 'text to columns' function in the data tab, to create a new column for each 'intersecting' protein, responsible for the enrichment of the particular GO term.
+
+#call in the GO terms - from input of 82 PD_core_network members 
+GO_terms <- read.csv("data/rawdata/GO_terms.csv") 
+GO_terms<- subset(GO_terms, term_size <100) 
+
+
+#The following lines of code permit identification of the interactors that are resposible for this enrichment 
+B <- GO_terms
+
+n.col.meths <- ncol(B)
+i <- 12
+parsed <- B[, c(1:11)]
+
+for (i in 12:n.col.meths) {
+  add <- B[,c(1:10,i)]
+  names(add)[11] <- "intersections"
+  parsed <- rbind(parsed,add)
+  i <- i+1
+}
+parsed <- na.omit(parsed) 
+GO_terms <- parsed
+
+#The resultant dataframe will contain a new row, for protein, with each single GO term represented by it.
+
+#The following lines of code import a manual annotation table, for the annotation and grouping of GO terms into 'semantic classes' and 'functional groups'.
+semantic_classes <- read.csv( "data/conversion_files/semantic_classes.csv")
+semantic_classes  <- semantic_classes [c(1,3,4)]
+GO_terms_annotated <-merge(GO_terms,semantic_classes  ,by.x="term_id", by.y="GO.ID", all.x=TRUE)
+write.csv(GO_terms_annotated , "data/processed_data/GO_terms_annotated_check .csv",row.names=FALSE)
+
+#Then, the file needs to be manually parsed in excel to annotate new terms not found within the table, and to remove terms which are considered 'general'. 
+#calling in the file with manually added annotations 
+Contributing_proteins<- read.csv("data/processed_data/GO_terms_annotated_manual.csv") 
+
+#Manual inspection within Excel, to identify the functional groups and semantic classes enriched. In this analysis, it was identified that nuclear biological processes seem to represent the most signficantly enriched. The following lines of code allow further investigation of this enrichment.
+#subset those rows that are associated with nuclear GO terms
+DNA_metabolism <- subset(Contributing_proteins, Functional.Block == "DNA metabolism")
+write.csv(DNA_metabolism , "data/processed_data/GO_terms_DNA_metabolism_contributors.csv",row.names=FALSE)
+Nuclear_protein_localisation <- subset(Contributing_proteins, Semantic.Class == "transport- protein localisation - nucleus") 
+write.csv(Nuclear_protein_localisation , "data/processed_data/GO_terms_Nuclear_protein_localisation_contributors.csv",row.names=FALSE)
+Nuclear_transport <- subset(Contributing_proteins, Semantic.Class == "transport - intracellular - nuclear") 	
+write.csv(Nuclear_transport, "data/processed_data/GO_terms_Nuclear_transport_contributors.csv",row.names=FALSE)
+
+#The following lines of code create list of the intersections (protein) responsible for the enrichment of each group of nuclear terms.
+DNA_metabolism <- DNA_metabolism[c(11,13)]
+Nuclear_protein_localisation <-Nuclear_protein_localisation[c(11,13)]
+Nuclear_transport<-Nuclear_transport[c(11,13)]
+
+#The following generates a list of the proteins contributing to enrichment of the 'nuclear' GO terms. 
+
+DNA_metabolism_list_prep <- DNA_metabolism[c(1)]
+Nuclear_protein_localisation_list_prep <-Nuclear_protein_localisation[c(1)]
+Nuclear_transport_list_prep<-Nuclear_transport[c(1)]
+Contributors_unique <- rbind(DNA_metabolism_list_prep,Nuclear_protein_localisation_list_prep,Nuclear_transport_list_prep)
+Contributors_unique <- unique(Contributors_unique)
+
+#The following lines of code generate a table, to show which GO terms each of the proteins intersect with.
+Contributors_unique <- merge(Contributors_unique,DNA_metabolism,by.x="intersections", by.y="intersections", all.x=TRUE)
+Contributors_unique <- unique(Contributors_unique)
+Contributors_unique <- merge(Contributors_unique,Nuclear_protein_localisation,by.x="intersections", by.y="intersections", all.x=TRUE)
+Contributors_unique <- unique(Contributors_unique)
+Contributors_unique <- merge(Contributors_unique,Nuclear_transport,by.x="intersections", by.y="intersections", all.x=TRUE)
+Contributors_unique <- unique(Contributors_unique)
+write.csv(Contributors_unique, "data/processed_data/GO_contributing_protein_table.csv",row.names=FALSE)
+
+
+

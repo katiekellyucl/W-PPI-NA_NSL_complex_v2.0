@@ -1,0 +1,52 @@
+Project number: 1 - revision
+
+Author: "Katie Kelly"
+
+Contact details: katie.kelly.14@ucl.ac.uk
+
+date: "2023-01-26"
+
+Date script last modified: 2023-02-03   
+
+Package dependencies: 
+library("dplyr")
+library("tidyverse")
+library("stringr")
+
+output: pdf_document
+
+
+
+#Generating the PD-CORE network.
+#Note that the PD-CORE SL members have been downloaded from PINOT, the 14 PD associated FL NSL interactors have been prioritised and carried forward to obtain the SL. 
+#PD-core SL refinement steps
+
+PD_core_SL <- read.csv("data/rawdata/PD_core_SL.csv")
+PD_core_SL <- PD_core_SL[c(1,3,4,6,11)]
+PD_core_SL <- subset(PD_core_SL, PD_core_SL$Final.Score > 2) #Thresholded PD-CORE second layer interactions
+unique_SL_interactors <- PD_core_SL[c(3)]
+unique_SL_interactors <- unique(unique_SL_interactors) #gives a list of the interactors within the thresholded network.
+
+
+write.csv(PD_core_SL , "data/processed_data/PD_core_SL_threshold.csv",row.names=FALSE)
+
+#The following lines of code call in the thresholded second layer, and identify the number of first layer interactors, before removing private interactors, to refine the PD-CORE second layer.
+PD_core_SL <- read.csv("data/processed_data/PD_core_SL_threshold.csv")
+PD_core_SL<-PD_core_SL[c(1,2,4)]
+PD_core_SL <-unique(PD_core_SL)
+PD_core_SL<-PD_core_SL[c(3)]
+
+PD_core_SL<- PD_core_SL %>%
+  group_by(across(everything())) %>%
+  mutate(n = n())
+  
+
+PD_core_SL<- PD_core_SL[!duplicated(PD_core_SL), ]
+PD_core_SL<- subset(PD_core_SL, n > 1) #retains only the interactors that interact with >1 first layer network member. 
+
+write.csv(PD_core_SL , "data/processed_data/PD_core_SL_refined.csv",row.names=FALSE)
+
+#within the final list, manually remove any of the NSL seeds, and add any first layer PD-core members that are not already in the list. This final list can be input into the gene ontology search tool.
+
+
+
